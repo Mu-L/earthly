@@ -4,20 +4,29 @@
 # 3) ReRun `earthly +run`
 # Result: `build` will rerun, but `link` and `run` will be served from the cache as main.o is unchanged
 
-FROM alpine
+FROM alpine:3.13
 WORKDIR /code
 RUN apk add --update --no-cache build-base
 
 build:
     COPY src .
+    RUN gcc --version
+    RUN md5sum main.cpp
+    RUN cat main.cpp | base64
+    RUN cat main.cpp
     RUN gcc -c main.cpp
+    RUN md5sum main.o
     SAVE ARTIFACT main.o
 
 link:
     COPY +build/main.o .
+    RUN gcc --version
+    RUN md5sum main.o
     RUN gcc -o main main.o
     SAVE ARTIFACT main
 
 run:
     COPY +link/main .
     RUN ./main
+
+

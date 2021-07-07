@@ -409,14 +409,16 @@ func (c *Converter) CopyArtifact(ctx context.Context, artifactName string, dest 
 }
 
 // CopyClassical applies the earthly COPY command, with classical args.
-func (c *Converter) CopyClassical(ctx context.Context, srcs []string, dest string, isDir bool, keepTs bool, keepOwn bool, chown string) error {
+func (c *Converter) CopyClassical(ctx context.Context, targetLocalPath string, srcs []string, dest string, isDir bool, keepTs bool, keepOwn bool, chown string) error {
 	err := c.checkAllowed("COPY")
 	if err != nil {
 		return err
 	}
 	c.nonSaveCommand()
 	c.mts.Final.MainState = llbutil.CopyOp(
-		c.buildContext, srcs, c.mts.Final.MainState, dest, true, isDir, keepTs, c.copyOwner(keepOwn, chown), false, false,
+		c.buildContext.WithInclude(srcs), // if we don't specify WithInclude, the entire context would be copied instead.
+		srcs,
+		c.mts.Final.MainState, dest, true, isDir, keepTs, c.copyOwner(keepOwn, chown), false, false,
 		llb.WithCustomNamef(
 			"%sCOPY %s%s %s",
 			c.vertexPrefix(false, false),

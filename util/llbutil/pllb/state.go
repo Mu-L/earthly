@@ -5,7 +5,12 @@ package pllb
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/moby/buildkit/client/llb"
@@ -15,9 +20,21 @@ import (
 // gmu is a global lock used for any interaction with the llb package.
 var gmu sync.Mutex
 
+var withincludCache map[string]State
+
+func init() {
+	withincludCache = map[string]State{}
+}
+
 // State is a wrapper around llb.State.
 type State struct {
 	st llb.State
+
+	// When calling pllb.Local, we must save the name and options
+	// so we can later re-create a new state with the include pattern correctly set
+	// when we encounter a COPY command; this is done with the WithInclude method.
+	localName string
+	localOpts []llb.LocalOption
 }
 
 // FromRawState creates a wrapper around a raw llb.State.
@@ -38,7 +55,11 @@ func Scratch() State {
 func Local(name string, opts ...llb.LocalOption) State {
 	gmu.Lock()
 	defer gmu.Unlock()
-	return State{st: llb.Local(name, opts...)}
+	return State{
+		st:        llb.Local(name, opts...),
+		localName: name,
+		localOpts: opts,
+	}
 }
 
 // Image is a wrapper around llb.Image.
@@ -120,6 +141,77 @@ func (s State) GetDir(ctx context.Context) (string, error) {
 	gmu.Lock()
 	defer gmu.Unlock()
 	return s.st.GetDir(ctx)
+}
+
+func getSharedKeyHintFromInclude(name string, incl []string) string {
+	h := sha1.New()
+	b := make([]byte, 8)
+
+	addToHash := func(path string) {
+		h.Write([]byte(path))
+		inode := getInodeBestEffort(path)
+		binary.LittleEndian.PutUint64(b, inode)
+		h.Write(b)
+	}
+
+	addToHash(name)
+	for _, path := range incl {
+		addToHash(path)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func fixIncl(incl []string) []string {
+	incl2 := []string{}
+	for _, inc := range incl {
+		if inc == "." {
+			inc = "./"
+		} else if filepath.Base(inc) == "." {
+			inc = inc[:len(inc)-1]
+		}
+		incl2 = append(incl2, inc)
+	}
+	return incl2
+}
+
+// WithInclude creates a new local state with include patterns set
+// this is to prevent copying the entire directory contents.
+func (s State) WithInclude(incl []string) State {
+	gmu.Lock()
+	defer gmu.Unlock()
+
+	if s.localName == "" {
+		// state is not local, don't modify it.
+		return s
+	}
+
+	includePatterns := true
+	for _, inc := range incl {
+		if filepath.Base(inc) == "." {
+			includePatterns = false
+		}
+	}
+
+	key := getSharedKeyHintFromInclude(s.localName, incl)
+	if st, ok := withincludCache[key]; ok {
+		fmt.Printf("re-using cache for %q -> %q %v\n", key, s.localName, incl)
+		return st
+	}
+
+	opts := []llb.LocalOption{}
+	for _, o := range s.localOpts {
+		opts = append(opts, o)
+	}
+	opts = append(opts, llb.IncludePatterns(incl))
+	if includePatterns {
+		opts = append(opts, llb.SharedKeyHint(key))
+	}
+
+	fmt.Printf("caching %q\n", key)
+	st := State{st: llb.Local(s.localName, opts...)}
+	fmt.Printf("saving to cache for %q -> %q %v\n", key, s.localName, incl)
+	withincludCache[key] = st
+	return st
 }
 
 // User is a wrapper around llb.User.

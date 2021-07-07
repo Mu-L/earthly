@@ -115,6 +115,9 @@ lint-newline-ending:
     FROM alpine:3.13
     WORKDIR /everything
     COPY . .
+    RUN ls -la | wc
+    RUN ls -la
+    RUN find .
     RUN set -e; \
         code=0; \
         for f in $(find . -type f \( -iname '*.yml' -o -iname '*.go' -o -iname 'Earthfile' -o -iname '*.earth' \) | grep -v "ast/tests/empty-targets.earth" | grep -v "examples/tests/version/version-only.earth" ); do \
