@@ -110,6 +110,7 @@ copy-test-verbose-output:
 
     # run it a second time to ensure files are not re-sent
     DO +RUN_EARTHLY --earthfile=copy-verbose.earth --extra_args="--verbose"  --post_command="2>output2.txt"
+    RUN cat output2.txt
     RUN cat output2.txt | grep 'sent data for' | grep -v 'a.txt'
     RUN cat output2.txt | grep 'sent data for' | grep -v 'alpha'
     RUN cat output2.txt | grep 'sent data for' | grep -v 'beta'
