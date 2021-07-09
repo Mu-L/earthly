@@ -165,9 +165,9 @@ func fixIncl(incl []string) []string {
 	incl2 := []string{}
 	for _, inc := range incl {
 		if inc == "." {
-			inc = "./"
+			inc = "./*"
 		} else if filepath.Base(inc) == "." {
-			inc = inc[:len(inc)-1]
+			inc = inc[:len(inc)-1] + "*"
 		}
 		incl2 = append(incl2, inc)
 	}
@@ -180,17 +180,15 @@ func (s State) WithInclude(incl []string) State {
 	gmu.Lock()
 	defer gmu.Unlock()
 
+	fmt.Printf("%q incl %d  elems: %v\n", s.localName, len(incl), incl)
+
 	if s.localName == "" {
 		// state is not local, don't modify it.
 		return s
 	}
 
-	includePatterns := true
-	for _, inc := range incl {
-		if filepath.Base(inc) == "." {
-			includePatterns = false
-		}
-	}
+	incl = fixIncl(incl)
+	fmt.Printf("after fix: %v\n", incl)
 
 	key := getSharedKeyHintFromInclude(s.localName, incl)
 	if st, ok := withincludCache[key]; ok {
@@ -203,9 +201,7 @@ func (s State) WithInclude(incl []string) State {
 		opts = append(opts, o)
 	}
 	opts = append(opts, llb.IncludePatterns(incl))
-	if includePatterns {
-		opts = append(opts, llb.SharedKeyHint(key))
-	}
+	opts = append(opts, llb.SharedKeyHint(key))
 
 	fmt.Printf("caching %q\n", key)
 	st := State{st: llb.Local(s.localName, opts...)}

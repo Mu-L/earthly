@@ -28,5 +28,3 @@ link:
 run:
     COPY +link/main .
     RUN ./main
-
-
